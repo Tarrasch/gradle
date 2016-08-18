@@ -16,9 +16,28 @@
 
 package org.gradle.nativeplatform.internal.services;
 
+import org.gradle.api.internal.artifacts.ResolveContext;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ComponentResolvers;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.DelegatingComponentResolvers;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ResolverProviderFactory;
+import org.gradle.api.internal.resolve.BrainDeadVariantChooser;
+import org.gradle.api.internal.resolve.LibraryResolutionErrorMessageBuilder;
+import org.gradle.api.internal.resolve.LocalLibraryDependencyResolver;
+import org.gradle.api.internal.resolve.LocalLibraryMetaDataAdapter;
+import org.gradle.api.internal.resolve.NativeComponentResolveContext;
+import org.gradle.api.internal.resolve.NativeLibraryResolutionErrorMessageBuilder;
+import org.gradle.api.internal.resolve.NativeLocalLibraryMetaDataAdapter;
+import org.gradle.api.internal.resolve.ProjectModelResolver;
+import org.gradle.api.internal.resolve.VariantChooser;
 import org.gradle.internal.service.ServiceRegistration;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.PluginServiceRegistry;
-import org.gradle.nativeplatform.internal.*;
+import org.gradle.nativeplatform.NativeBinarySpec;
+import org.gradle.nativeplatform.internal.NativeBinaryRenderer;
+import org.gradle.nativeplatform.internal.NativeExecutableBinaryRenderer;
+import org.gradle.nativeplatform.internal.NativePlatformResolver;
+import org.gradle.nativeplatform.internal.SharedLibraryBinaryRenderer;
+import org.gradle.nativeplatform.internal.StaticLibraryBinaryRenderer;
 import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolverServices;
 import org.gradle.nativeplatform.platform.internal.NativePlatforms;
 import org.gradle.nativeplatform.toolchain.internal.gcc.version.CompilerMetaDataProviderFactory;
@@ -45,6 +64,7 @@ public class NativeBinaryServices implements PluginServiceRegistry {
         registration.add(DefaultVisualStudioLocator.class);
         registration.add(DefaultWindowsSdkLocator.class);
         registration.add(CompilerMetaDataProviderFactory.class);
+        registration.add(NativeLibraryDependencyResolverFactory.class);
     }
 
     @Override
@@ -55,4 +75,37 @@ public class NativeBinaryServices implements PluginServiceRegistry {
     public void registerProjectServices(ServiceRegistration registration) {
         registration.addProvider(new NativeDependencyResolverServices());
     }
+
+
+    public static class NativeLibraryDependencyResolverFactory implements ResolverProviderFactory {
+        private final ProjectModelResolver projectModelResolver;
+        private final ServiceRegistry registry;
+
+        public NativeLibraryDependencyResolverFactory(ProjectModelResolver projectModelResolver, ServiceRegistry registry) {
+            this.projectModelResolver = projectModelResolver;
+            this.registry = registry;
+        }
+
+        @Override
+        public boolean canCreate(ResolveContext context) {
+            return context instanceof NativeComponentResolveContext;
+        }
+
+        @Override
+        public ComponentResolvers create(ResolveContext context) {
+            VariantChooser variantChooser = new BrainDeadVariantChooser();
+            LocalLibraryMetaDataAdapter libraryMetaDataAdapter = new NativeLocalLibraryMetaDataAdapter();
+            LibraryResolutionErrorMessageBuilder errorMessageBuilder = new NativeLibraryResolutionErrorMessageBuilder();
+            LocalLibraryDependencyResolver<NativeBinarySpec> delegate =
+                    new LocalLibraryDependencyResolver<NativeBinarySpec>(
+                            NativeBinarySpec.class,
+                            projectModelResolver,
+                            variantChooser,
+                            libraryMetaDataAdapter,
+                        errorMessageBuilder
+                    );
+            return DelegatingComponentResolvers.of(delegate);
+        }
+    }
+
 }
